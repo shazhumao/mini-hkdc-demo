@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MiniHKDC Wallet Interface</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    input, button { margin: 5px; padding: 8px; font-size: 1em; }
+  </style>
+</head>
+<body>
+  <h2>MiniHKDC Wallet</h2>
+
+  <div>
+    <button onclick="connectWallet()">Connect Wallet</button>
+    <p id="walletAddress"></p>
+  </div>
+
+  <div>
+    <h4>Check Balance</h4>
+    <button onclick="checkBalance()">Get Balance</button>
+    <p id="balance"></p>
+  </div>
+
+  <div>
+    <h4>Mint Tokens (Admin Only)</h4>
+    <input type="text" id="mintTo" placeholder="Recipient address" />
+    <input type="number" id="mintAmount" placeholder="Amount" />
+    <button onclick="mintTokens()">Mint</button>
+    <p id="mintResult"></p>
+  </div>
+
+  <div>
+    <h4>Transfer mHKDC</h4>
+    <input type="text" id="transferTo" placeholder="Recipient address" />
+    <input type="number" id="transferAmount" placeholder="Amount (e.g. 1.23)" />
+    <button onclick="transferTokens()">Transfer</button>
+    <p id="transferStatus"></p>
+  </div>
+
+  <script>
+    let provider, signer;
+    const CONTRACT_ADDRESS = "0x17C5b608AfD65a8D2a69c7C66f458081bd70C66a"; // Replace with actual contract address
+    const ABI = [
+      "function balanceOf(address) view returns (uint256)",
+      "function decimals() view returns (uint8)",
+      "function transfer(address to, uint256 amount) returns (bool)"
+    ];
+    let contract;
+
+    async function connectWallet() {
+      if (window.ethereum) {
+        await ethereum.request({ method: 'eth_requestAccounts' });
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        signer = provider.getSigner();
+        contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+        document.getElementById("walletAddress").innerText = "Connected: " + await signer.getAddress();
+      } else {
+        alert("Please install MetaMask!");
+      }
+    }
+
+    async function checkBalance() {
+      const address = await signer.getAddress();
+      const balance = await contract.balanceOf(address);
+      const decimals = await contract.decimals();
+      const formatted = ethers.utils.formatUnits(balance, decimals);
+      document.getElementById("balance").innerText = `Balance: ${formatted}`;
+    }
+
+    async function mintTokens() {
+      const to = document.getElementById("mintTo").value;
+      const amount = document.getElementById("mintAmount").value;
+      const res = await fetch('/mint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to, amount })
+      });
+      const data = await res.json();
+      document.getElementById("mintResult").innerText = `Mint TX: ${data.tx_hash}`;
+    }
+
+    async function transferTokens() {
+      const to = document.getElementById("transferTo").value;
+      const amount = document.getElementById("transferAmount").value;
+      if (!ethers.utils.isAddress(to)) {
+        document.getElementById("transferStatus").innerText = "Invalid recipient address.";
+        return;
+      }
+      try {
+        const decimals = await contract.decimals();
+        const rawAmount = ethers.utils.parseUnits(amount, decimals);
+        const tx = await contract.transfer(to, rawAmount);
+        document.getElementById("transferStatus").innerText = `TX Sent: ${tx.hash}`;
+        await tx.wait();
+        document.getElementById("transferStatus").innerText = "✅ Transfer successful";
+      } catch (e) {
+        console.error(e);
+        document.getElementById("transferStatus").innerText = "❌ Transfer failed";
+      }
+    }
+  </script>
+</body>
+</html>
